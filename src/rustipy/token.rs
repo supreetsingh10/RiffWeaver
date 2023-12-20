@@ -24,6 +24,7 @@ fn get_creds() -> Result<Creds, std::io::Error> {
             Ok(creds)
         }
         Err(e) => {
+            println!("This is the error {}", e.to_string());
             return Err(e);
         }
     }
@@ -36,23 +37,28 @@ fn get_creds() -> Result<Creds, std::io::Error> {
 // The body needs to have {Last-Code, Redirect-URI & Grant-Type}
 // There is no actual redirection it is just for authentication
 async fn generate_access_token(creds: Creds) -> Result<AccessToken, String> {
-    let res  = match Client::new()
+     match Client::new()
         .request(Method::POST, REQUEST_TOKEN_LINK)
         .header("Content-Type", "application/x-www-form-urlencoded")
         .body("grant_type=client_credentials&client_id=".to_owned() + creds.client_id.as_str() + "&client_secret=" + creds.client_secret.as_str())
         .send()
-        .await  {
-            Ok(r) => r,
+        .await
+        {
+            Ok(r) => {
+                let access_token: AccessToken = match r.json().await {
+                    Ok(at) => at,
+                    Err(e) =>  {
+                        println!("This is the error {}", e.to_string());
+                        return Err(e.to_string()); 
+                    }
+                }; 
+                Ok(access_token)
+            },
             Err(e) => {
+                println!("This is the error {}", e.to_string());
                 return Err(e.to_string());
             }
-        };
-
-    res.text()
-        .await
-        .map(|tt| {
-            tt
-        }).map_err(|e| e.to_string())
+        }
 }
 
 pub async fn get_access_token() -> Result<AccessToken, String> {
