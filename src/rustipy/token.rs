@@ -1,13 +1,13 @@
 use core::{fmt, panic};
 use std::fs::File;
-use std::io::BufReader; 
+use std::io::{BufReader, Write}; 
 use serde_json::from_reader; 
 use serde::{Deserialize, Serialize};
 use chrono::Utc;
 use reqwest::{Client,Method};
 
 use crate::rustipy::constants::REQUEST_TOKEN_LINK;
-use crate::utility::{open_file, create_file, write_to_file};
+use crate::utility::{open_file, create_tree_for_file};
 
 use super::constants::RUSTIPY_CACHE;
 
@@ -104,13 +104,16 @@ impl AccessToken {
     }
 
     fn write_to_file(self, file_path: impl Into<String>) -> Self {
-        if let Ok(mut f) = File::open(file_path.into()) {
-            if let Ok(access_str) = serde_json::to_string(&self) {
-                write_to_file(access_str, &mut f);
+        if let Ok(mut f) = File::create(file_path.into()) {
+            if let Ok(access_str) = serde_json::to_string_pretty(&self) {
+                f.write_all(access_str.as_bytes()).
+                    map_err(|e| {
+                        println!("Failed to write the file {}", e);
+                    });
+                self
             } else {
                 panic!("Failed to turn to string"); 
             }
-            self
         } else {
             panic!("Unable to make file");
         }
@@ -208,7 +211,7 @@ pub async fn get_access_token() -> Result<AccessToken, String> {
 
         }
         None => {
-            create_file(RUSTIPY_CACHE).is_some().then(|| {
+            create_tree_for_file(RUSTIPY_CACHE).is_some().then(|| {
                 println!("Okay the file was created");
             });
             generate_access_token().await.map(|at| at.write_to_file(RUSTIPY_CACHE))
