@@ -1,26 +1,20 @@
-use core::fmt;
+use core::{fmt, panic};
 use std::fs::File;
 use std::io::BufReader; 
 use serde_json::from_reader; 
 use serde::{Deserialize, Serialize};
-use crate::rustipy::constants::REQUEST_TOKEN_LINK;
 use chrono::Utc;
 use reqwest::{Client,Method};
 
+use crate::rustipy::constants::REQUEST_TOKEN_LINK;
+use crate::utility::{open_file, create_file, write_to_file};
+
+use super::constants::RUSTIPY_CACHE;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct Secrets {
     client_id: String,
     client_secret: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct AccessToken {
-    access_token: String, 
-    token_type: String,
-    redirect_uri: String,
-    expires_in: i64,
-    expires_at: Option<i64>,
 }
 
 // gets the client secrts, client id and makes a structure that will be refenced again and again. 
@@ -37,6 +31,17 @@ impl fmt::Display for AccessToken {
        write!(f, "{} {} {} ", self.access_token, self.token_type, self.expires_in) 
     }
 }
+
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct AccessToken {
+    access_token: String, 
+    token_type: String,
+    redirect_uri: String,
+    expires_in: i64,
+    expires_at: Option<i64>,
+}
+
 
 // So this access token will be transferred around and this will be used for authentication.
 // Now the creds of the user, the client and secret will be taken up from the file. 
@@ -82,12 +87,33 @@ impl AccessToken {
         self
     }
 
+    // checks for the present time and the time got from the cached token
+    // returns false if not expired
+    // returns true if expired 
+    fn check_if_expired(&self) -> bool {
+        let dt = Utc::now();
+        (dt.timestamp() - self.expires_at.unwrap()) > 3550
+    }
+
     pub fn get_access_token_string(&self) -> String {
         self.access_token.to_string()
     }
 
     fn get_redirect_uri(&self) -> String {
         self.redirect_uri.clone()
+    }
+
+    fn write_to_file(self, file_path: impl Into<String>) -> Self {
+        if let Ok(mut f) = File::open(file_path.into()) {
+            if let Ok(access_str) = serde_json::to_string(&self) {
+                write_to_file(access_str, &mut f);
+            } else {
+                panic!("Failed to turn to string"); 
+            }
+            self
+        } else {
+            panic!("Unable to make file");
+        }
     }
 
     fn expired(&self) -> bool {
@@ -119,7 +145,7 @@ fn get_creds() -> Result<Secrets, std::io::Error> {
 // So the header needs to have this {Content-Type, Authorization {Client-ID, Client-Secret}}
 // The body needs to have {Last-Code, Redirect-URI & Grant-Type}
 // There is no actual redirection it is just for authentication
-async fn generate_access_token(creds: Secrets) -> Result<AccessTokenResponse, String> {
+async fn request_access_token(creds: Secrets) -> Result<AccessTokenResponse, String> {
      let resp = Client::new()
         .request(Method::POST, REQUEST_TOKEN_LINK)
         .header("Content-Type", "application/x-www-form-urlencoded")
@@ -147,7 +173,7 @@ async fn generate_access_token(creds: Secrets) -> Result<AccessTokenResponse, St
 // make a cache for the token 
 // Check if it exists or it has expired. If it has expired then 
 // regeneate the Authorization token. 
-pub async fn get_access_token() -> Result<AccessToken, String> {
+async fn generate_access_token() -> Result<AccessToken, String> {
     let creds = match get_creds() {
         Ok(cred) => cred, 
         Err(e) => {
@@ -155,10 +181,53 @@ pub async fn get_access_token() -> Result<AccessToken, String> {
         }
     };
 
-     generate_access_token(creds).await
+     request_access_token(creds).await
         .map(|auth| {
             AccessToken::new(auth)
                 .set_expires_at()
                 .clone()
         })
+
 }
+
+// read the cache file check if the token has expired if not then return the access_token
+// if it has then generate a new token
+pub async fn get_access_token() -> Result<AccessToken, String> {
+    match open_file(RUSTIPY_CACHE) {
+        Some(f) => {
+            if let Ok(cached_token) = process_file_for_tokens(f) {
+                if cached_token.check_if_expired() { 
+                    generate_access_token().await.map(|at| at.write_to_file(RUSTIPY_CACHE))
+                } else { 
+                    Ok(cached_token) 
+                }
+            } else {
+                // if failing to process the file regenerate the token and write to it. 
+                generate_access_token().await.map(|at| at.write_to_file(RUSTIPY_CACHE))
+            }
+
+        }
+        None => {
+            create_file(RUSTIPY_CACHE).is_some().then(|| {
+                println!("Okay the file was created");
+            });
+            generate_access_token().await.map(|at| at.write_to_file(RUSTIPY_CACHE))
+        }
+    }
+    
+}
+
+// Gets the files, serializes into a json object gets the tokens
+fn process_file_for_tokens(file_ptr: std::fs::File) -> Result<AccessToken, String> {
+    let reader = BufReader::new(file_ptr);
+    from_reader(reader)
+    .map_err(|e| {
+        e.to_string()
+    })
+}
+
+// async function that will be checking if the directory for the cache exists or not
+// if it does not exist then create the file and the folder. 
+// everytime a request is made check for the written values. 
+
+
