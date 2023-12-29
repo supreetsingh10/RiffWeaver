@@ -1,2 +1,4 @@
 /target
 ./src/creds.json
+./Cargo.lock
+./design.txt

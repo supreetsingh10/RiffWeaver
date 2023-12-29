@@ -1,5 +1,6 @@
-use std::path::Path; 
+use std::{path::Path, env}; 
 use std::fs::File;
+use rand::{distributions::Alphanumeric, Rng};
 
 ///TODO Write test cases for this code. 
 
@@ -20,3 +21,22 @@ pub fn create_tree_for_file(new_file_path: impl Into<String>) -> Option<File> {
         File::create(Path::new(&f_path)).ok()
     }
 }
+
+pub fn generate_random_string(length: u64) -> Option<String> {
+    Some(rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(length as usize)
+        .map(char::from)
+        .collect())
+}
+
+pub fn get_env_var(var_name: impl Into<String>) -> String {
+    match env::var(var_name.into()) {
+        Ok(v) => v.to_owned(),
+        Err(_) => {
+            panic!("Failed to get the environment variable"); 
+        }
+    }
+}
+
+
