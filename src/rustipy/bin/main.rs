@@ -2,6 +2,7 @@
 // use this to test the spotify api interaction thing. 
 use libra::rustipy::token::{ get_access_token, AccessToken}; 
 use tokio::runtime::Builder; 
+use libra::rustipy::constants::DEBUG; 
 
 async fn access_token_rt()-> Result<AccessToken, String > {
     get_access_token().await
@@ -14,10 +15,12 @@ fn main() ->Result<(), String> {
 
     let access_token = rt.map(|ree| {
         ree.block_on(async {
-            println!("Came here"); 
+            if DEBUG {
+                println!("Came here"); 
+            }
             match access_token_rt().await {
                 Ok(at) => {
-                    println!("This is the token");
+                    DEBUG.then(|| println!("This is the token {}", at));
                     at
                 },
                 Err(e) => panic!("Jesus christ what happened {}", e),

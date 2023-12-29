@@ -9,7 +9,7 @@ use reqwest::{Client,Method};
 use crate::rustipy::constants::REQUEST_TOKEN_LINK;
 use crate::utility::{open_file, create_tree_for_file};
 
-use super::constants::RUSTIPY_CACHE;
+use super::constants::{RUSTIPY_CACHE, DEBUG};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct Secrets {
@@ -106,7 +106,7 @@ impl AccessToken {
     fn write_to_file(self, file_path: impl Into<String>) -> Self {
         if let Ok(mut f) = File::create(file_path.into()) {
             if let Ok(access_str) = serde_json::to_string_pretty(&self) {
-                f.write_all(access_str.as_bytes()).
+                let _ = f.write_all(access_str.as_bytes()).
                     map_err(|e| {
                         println!("Failed to write the file {}", e);
                     });
@@ -117,12 +117,6 @@ impl AccessToken {
         } else {
             panic!("Unable to make file");
         }
-    }
-
-    fn expired(&self) -> bool {
-        let dt = Utc::now(); 
-        // if expired is not none, then check if the current timestamp has excedded the time set
-        self.expires_at.is_some_and(|exp_dt| dt.timestamp() > exp_dt)
     }
 }
 
@@ -200,6 +194,9 @@ pub async fn get_access_token() -> Result<AccessToken, String> {
         Some(f) => {
             if let Ok(cached_token) = process_file_for_tokens(f) {
                 if cached_token.check_if_expired() { 
+                    if DEBUG {
+                        println!("Expired token, new token generated");
+                    }
                     generate_access_token().await.map(|at| at.write_to_file(RUSTIPY_CACHE))
                 } else { 
                     Ok(cached_token) 
@@ -208,12 +205,12 @@ pub async fn get_access_token() -> Result<AccessToken, String> {
                 // if failing to process the file regenerate the token and write to it. 
                 generate_access_token().await.map(|at| at.write_to_file(RUSTIPY_CACHE))
             }
-
         }
         None => {
-            create_tree_for_file(RUSTIPY_CACHE).is_some().then(|| {
-                println!("Okay the file was created");
-            });
+            create_tree_for_file(RUSTIPY_CACHE);
+            if DEBUG {
+                println!("No file found hence new token will be generated");
+            }
             generate_access_token().await.map(|at| at.write_to_file(RUSTIPY_CACHE))
         }
     }
