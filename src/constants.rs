@@ -1,1 +1,1 @@
-pub const CONFIG_PATH: &str = ".config/riffweaver/riff.json";
+pub const CONFIG_PATH: &str = "/.config/riffweaver/riff.json";

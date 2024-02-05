@@ -8,7 +8,7 @@ pub struct UserConfig
     client_id: String,
     redirect_uri: String,
     port: u16,
-    token_cache_path: Option<PathBuf>, 
+    token_cache_path: Option<String>, 
     keybinds: Option<String>
 }
 
@@ -29,6 +29,10 @@ impl UserConfig {
 
     pub fn get_redirect_uri(&self) -> String {
         self.redirect_uri.clone()
+    }
+
+    pub fn get_token_cache_path(&self) -> Option<String> {
+        self.token_cache_path.clone()
     }
 
     pub fn get_port(&self) -> u16 {
@@ -56,7 +60,7 @@ impl UserConfig {
 
 
 // parses the config file and returns a UserConfig object which can be later used.
-pub fn parse_config(file_path: &str) -> std::io::Result<UserConfig> {
+fn parse_config(file_path: &str) -> std::io::Result<UserConfig> {
     File::open(std::path::Path::new(&file_path)).map(|fp| {
         let reader = BufReader::new(fp);
         serde_json::from_reader(reader).unwrap()
@@ -65,8 +69,8 @@ pub fn parse_config(file_path: &str) -> std::io::Result<UserConfig> {
 
 
 // take the user input for the client id and redirect_uri
-pub fn take_values() -> io::Result<UserConfig> {
-    format!("Since the config was not found here {}", CONFIG_PATH);
+fn take_values() -> io::Result<UserConfig> {
+    println!("Since the config was not found here {}", CONFIG_PATH);
     println!("So we will be creating that file for you.");
     println!("Enter the client id from the spotify dashboard");
     let mut c_id = String::new();
@@ -75,4 +79,15 @@ pub fn take_values() -> io::Result<UserConfig> {
     stdout().flush()?;
     println!("We are going to use the default redirect_uri which will be https://localhost:8080");
     Ok(UserConfig::new(c_id.to_owned()))
+}
+
+pub fn load_user_config(config_path: &str) -> UserConfig {
+    match parse_config(config_path) {
+        Ok(uc) => uc,
+        Err(_) => {
+            take_values()
+                .expect("Failed to take values")
+                .create_config()
+        }
+    }
 }

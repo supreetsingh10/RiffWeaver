@@ -12,6 +12,7 @@ pub mod utils {
     pub fn generate_abs_path(dir_name: &str) -> String {
         let mut abs_path= get_env_var("HOME").expect("Failed to get the environment variable"); 
         abs_path.push_str(dir_name);
+        println!("{}", abs_path.clone());
         abs_path
     }
 }

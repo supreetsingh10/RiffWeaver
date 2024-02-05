@@ -1,27 +1,14 @@
-use crate::{constants::CONFIG_PATH, user_config::{UserConfig, take_values, parse_config}, utils::generate_abs_path};
+use crate::user_config::UserConfig;
 use std::io::{Read, Write};
 use rspotify::{AuthCodePkceSpotify, Credentials, OAuth};
 use std::net::{TcpListener, TcpStream};
 
 
 // creates the config file on the config path
-
 // manually make them enter the values
-pub fn authorize() -> Option<String> {
-    let user_conf = match parse_config(&generate_abs_path(CONFIG_PATH)) {
-        Ok(uc) => uc,
-        Err(_) => match take_values() {
-            Ok(uc) => uc.create_config(),
-            Err(e) => panic!("failed to take values {}", e.to_string()),
-        },
-    };
-
-
-    let oauth = oauth_setup(&user_conf);
-    let pkce_cred = Credentials::new_pkce(&user_conf.get_client_id());
-
-    let mut pkce = AuthCodePkceSpotify::new(pkce_cred, oauth);
-
+// takes user config, oauth 
+// makes crednentials from user config 
+pub fn authorize(pkce: &mut AuthCodePkceSpotify, user_conf: &UserConfig) -> Option<String> {
     let auth_url = match pkce.get_authorize_url(Some(69)) {
         Ok(url) => url,
         Err(e) => {
@@ -62,12 +49,6 @@ fn request_authorization(auth_url: String, user_conf: &UserConfig) -> Option<Str
    None
 }
 
-fn oauth_setup(usr_conf: &UserConfig) -> OAuth {
-    let mut oauth = OAuth::default();
-    oauth.redirect_uri = usr_conf.get_redirect_uri();
-    oauth.scopes.insert(String::from("user-modify-playback-state"));
-    oauth
-}
 
 fn handle_connection(mut stream: TcpStream) -> Option<String> {
     // The request will be quite large (> 512) so just assign plenty just in case
