@@ -1,6 +1,6 @@
 use crate::user_config::UserConfig;
 use std::io::{Read, Write};
-use rspotify::{AuthCodePkceSpotify, Credentials, OAuth};
+use rspotify::{AuthCodePkceSpotify};
 use std::net::{TcpListener, TcpStream};
 
 
@@ -33,8 +33,10 @@ fn request_authorization(auth_url: String, user_conf: &UserConfig) -> Option<Str
                 match stream {
                     Ok(stream) => {
                         if let Some(code) = handle_connection(stream) {
-                            let v: Vec<_> = code.split("code=").collect(); 
-                            return Some(String::from(v[1]));
+                             return code.split("code=")
+                                 .nth(1) 
+                                 .and_then(|s| s.split('&').next())
+                                 .map(|s| s.to_owned());
                         }
                     }
                     Err(e) => println!("Error: {}", e.to_string()),

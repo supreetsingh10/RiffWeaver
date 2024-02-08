@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use crate::{constants::CONFIG_PATH, utils::generate_abs_path};
-use std::{fs::File,io::{self, Write,stdin, stdout, BufReader}, path::PathBuf};
+use std::{fs::File,io::{self, Write,stdin, stdout, BufReader}};
 
 #[derive(Serialize, Deserialize)]
 pub struct UserConfig 
