@@ -1,0 +1,18 @@
+[package]
+name = "riff_weaver"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+reqwest = "0.11.23"
+rspotify = { version = "0.12.0", features = ["env-file"] }
+serde = "1.0.196"
+serde_json = "1.0.113"
+tokio = {version = "1.35.1", features = ["rt-multi-thread", "macros"] }
+webbrowser = "0.8.12"
+
+[lib]
+name = "lib"
+path = "./src/lib.rs" 
