@@ -1,9 +1,8 @@
-use std::{ops::Deref, path::PathBuf};
-
+use std::path::PathBuf;
+use lib::auth::get_access_token; 
 // use lib::auth::authorize;
 use lib::{utils::generate_abs_path, constants::*, user_config::{load_user_config, UserConfig}};
-use rspotify::{ClientCredsSpotify, clients::{BaseClient,OAuthClient}, AuthCodePkceSpotify, Config, Credentials, OAuth}; 
-use lib::auth::authorize; 
+use rspotify::{AuthCodePkceSpotify, Config, Credentials, OAuth}; 
 
 
 // Get creds and oauth
@@ -18,38 +17,28 @@ fn oauth_setup(usr_conf: &UserConfig) -> OAuth {
 
 #[tokio::main]
 async fn main() {
+    env_logger::init();
     let user_conf: UserConfig = load_user_config(&generate_abs_path(CONFIG_PATH));
     let mut config = Config::default(); 
     
     // if it does not exist it will use the default path. 
     if let Some(cache_path) = user_conf.get_token_cache_path() {
-        config.cache_path = PathBuf::from(cache_path);
+        log::info!("Token cache path set {}", generate_abs_path(&cache_path));
+        config.cache_path = PathBuf::from(generate_abs_path(&cache_path));
+        config.token_cached = true;
     }
 
+    log::info!("Config {:?}", &config);
     let oauth = oauth_setup(&user_conf);
     let creds = Credentials::new_pkce(user_conf.get_client_id().as_str());
 
-    let client_creds: ClientCredsSpotify = ClientCredsSpotify::with_config(creds, config);
-    match client_creds.read_token_cache().await {
-        Ok(cres) => {
-            println!("{:?}", cres.unwrap());
-        },
-        Err(e) => println!("{:?}", e),
+    // for some reason the cache is not being read;
+    let mut pkce = AuthCodePkceSpotify::with_config(creds, oauth, config);
+    let ass_token = get_access_token(&mut pkce, &user_conf).await;
+    match ass_token {
+        Some(ass) => println!("{:?}", ass),
+        None => println!("Found nothing"),
     };
-    let mut pkce = AuthCodePkceSpotify::new(client_creds.get_creds().clone(), oauth);
 
     // check for access token if we have anyhting cached or not. 
-    if let Some(auth_code) = authorize(&mut pkce,&user_conf) {
-        println!("{}", auth_code.clone());
-        // check out the access token here.
-        if let Err(e) = pkce.request_token(auth_code.as_str()).await {
-            println!("Failed to request token because of {}", e.to_string());
-        } else {
-            let t = pkce.get_token();
-            let to = t.deref();
-            let tok = to.lock().await.unwrap();
-            let toke = tok.deref().clone().unwrap();
-            println!("{:?}", toke);
-        }
-    }
 }

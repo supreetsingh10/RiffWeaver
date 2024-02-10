@@ -1,6 +1,6 @@
 use crate::user_config::UserConfig;
-use std::io::{Read, Write};
-use rspotify::{AuthCodePkceSpotify};
+use std::{io::{Read, Write}, ops::Deref};
+use rspotify::{clients::{BaseClient, OAuthClient}, AuthCodePkceSpotify, Token};
 use std::net::{TcpListener, TcpStream};
 
 
@@ -8,7 +8,7 @@ use std::net::{TcpListener, TcpStream};
 // manually make them enter the values
 // takes user config, oauth 
 // makes crednentials from user config 
-pub fn authorize(pkce: &mut AuthCodePkceSpotify, user_conf: &UserConfig) -> Option<String> {
+fn authorize(pkce: &mut AuthCodePkceSpotify, user_conf: &UserConfig) -> Option<String> {
     let auth_url = match pkce.get_authorize_url(Some(69)) {
         Ok(url) => url,
         Err(e) => {
@@ -19,6 +19,22 @@ pub fn authorize(pkce: &mut AuthCodePkceSpotify, user_conf: &UserConfig) -> Opti
     request_authorization(auth_url, &user_conf)
 }
 
+async fn authorize_and_process_token(pkce: &mut AuthCodePkceSpotify, user_conf: &UserConfig) -> Option<Token> {
+    if let Some(code) = authorize(pkce, &user_conf) {
+        if let Err(e) = pkce.request_token(code.as_str()).await {
+            println!("Failed to request a token {}", e.to_string());
+            None
+        } else {
+            let token = pkce.get_token(); 
+            let access_token = token.lock().await.expect("Failed to lock the token and failed unwrapping");
+            access_token.deref().clone()
+        }
+    } else {
+        None
+    }
+}
+
+// returns the authorization token which is later used to request access_token.
 fn request_authorization(auth_url: String, user_conf: &UserConfig) -> Option<String> {
    let listener = TcpListener::bind(format!("127.0.0.1:{}", user_conf.get_port()));
 
@@ -93,4 +109,40 @@ fn respond_with_error(error_message: String, mut stream: TcpStream) {
 
   stream.write_all(response.as_bytes()).unwrap();
   stream.flush().unwrap();
+}
+
+// checks the cache, regenerates the token if required. 
+// should I check for authorization here as well. 
+pub async fn get_access_token(pkce: &mut AuthCodePkceSpotify, user_conf: &UserConfig) -> Option<Token> {
+    // return None, when the token is expired
+    match pkce.read_token_cache(false).await {
+        Ok(token) => {
+            match token {
+                Some(t) => Some(t),
+                None => {
+                    // refetch the token here. 
+                    match pkce.refetch_token().await {
+                        Ok(ref_token) => {
+                            match ref_token {
+                                Some(ref_token) => Some(ref_token),
+                                None => {
+                                    // reauthorize the client here as well. 
+                                    authorize_and_process_token(pkce, user_conf).await
+                                }
+                            }
+                        },
+                        Err(e) => {
+                            println!("Failed to get the refresh token {}", e.to_string());
+                            return None;
+                        }
+                    }
+                }
+            }
+        },
+        Err(_) => {
+            // in case there is an error related to reading the token cache, reauthorize the
+            // client. 
+            authorize_and_process_token(pkce, user_conf).await
+        }
+    }
 }

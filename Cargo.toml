@@ -6,6 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+env_logger = "0.11.1"
+log = "0.4.20"
 reqwest = "0.11.23"
 rspotify = { version = "0.12.0", features = ["env-file"] }
 serde = "1.0.196"

@@ -27,8 +27,16 @@ impl UserConfig {
         self.client_id.clone()
     }
 
+   // pub fn get_client_secret(&self) -> String {
+   //     self.client_secret.clone()
+   // }
+
     pub fn get_redirect_uri(&self) -> String {
         self.redirect_uri.clone()
+    }
+
+    pub fn set_token_cache_path(&mut self, cache_path: String) {
+        self.token_cache_path = Some(cache_path)
     }
 
     pub fn get_token_cache_path(&self) -> Option<String> {
