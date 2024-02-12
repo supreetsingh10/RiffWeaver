@@ -27,10 +27,6 @@ impl UserConfig {
         self.client_id.clone()
     }
 
-   // pub fn get_client_secret(&self) -> String {
-   //     self.client_secret.clone()
-   // }
-
     pub fn get_redirect_uri(&self) -> String {
         self.redirect_uri.clone()
     }
@@ -59,7 +55,7 @@ impl UserConfig {
                 panic!(
                     "Failed to create the file at {}, please check the permissions, Error {}",
                     CONFIG_PATH,
-                    e.to_string()
+                    e
                 );
             }
         }
@@ -85,7 +81,7 @@ fn take_values() -> io::Result<UserConfig> {
     stdout().flush()?;
     stdin().read_line(&mut c_id)?;
     stdout().flush()?;
-    println!("We are going to use the default redirect_uri which will be https://localhost:8080");
+    println!("We are going to use the default redirect_uri which will be https://localhost:8888/riff");
     Ok(UserConfig::new(c_id.to_owned()))
 }
 

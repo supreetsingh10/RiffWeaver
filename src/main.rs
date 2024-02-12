@@ -9,12 +9,13 @@ use rspotify::{AuthCodePkceSpotify, Config, Credentials, OAuth};
 // AuthCodePkceSpotify::new(creds, oauth);
 //
 fn oauth_setup(usr_conf: &UserConfig) -> OAuth {
-    let mut oauth = OAuth::default();
+    let mut oauth = rspotify::OAuth::default();
     oauth.redirect_uri = usr_conf.get_redirect_uri();
     oauth.scopes.insert(String::from("user-modify-playback-state"));
     oauth
 }
 
+// to implemenent the commandline user arguments, to take inputs. 
 #[tokio::main]
 async fn main() {
     env_logger::init();
@@ -32,13 +33,12 @@ async fn main() {
     let oauth = oauth_setup(&user_conf);
     let creds = Credentials::new_pkce(user_conf.get_client_id().as_str());
 
+    log::info!("Credentials {:?}", creds);
+
     // for some reason the cache is not being read;
     let mut pkce = AuthCodePkceSpotify::with_config(creds, oauth, config);
-    let ass_token = get_access_token(&mut pkce, &user_conf).await;
-    match ass_token {
-        Some(ass) => println!("{:?}", ass),
-        None => println!("Found nothing"),
-    };
-
+    if let Err(e) = get_access_token(&mut pkce, &user_conf).await {
+        println!("Failed to get the access token {}", e);
+    }
     // check for access token if we have anyhting cached or not. 
 }
