@@ -1,6 +1,7 @@
 use crate::user_config::UserConfig;
-use std::{io::{Read, Write}, ops::Deref};
-use rspotify::{clients::{BaseClient, OAuthClient}, AuthCodePkceSpotify, Token};
+use core::panic;
+use std::io::{Read, Write};
+use rspotify::{clients::{BaseClient, OAuthClient}, AuthCodePkceSpotify, ClientResult};
 use std::net::{TcpListener, TcpStream};
 
 
@@ -8,31 +9,6 @@ use std::net::{TcpListener, TcpStream};
 // manually make them enter the values
 // takes user config, oauth 
 // makes crednentials from user config 
-fn authorize(pkce: &mut AuthCodePkceSpotify, user_conf: &UserConfig) -> Option<String> {
-    let auth_url = match pkce.get_authorize_url(Some(69)) {
-        Ok(url) => url,
-        Err(e) => {
-            panic!("Failed to get the AuthUrl {}", e.to_string());
-        }
-    };
-
-    request_authorization(auth_url, &user_conf)
-}
-
-async fn authorize_and_process_token(pkce: &mut AuthCodePkceSpotify, user_conf: &UserConfig) -> Option<Token> {
-    if let Some(code) = authorize(pkce, &user_conf) {
-        if let Err(e) = pkce.request_token(code.as_str()).await {
-            println!("Failed to request a token {}", e.to_string());
-            None
-        } else {
-            let token = pkce.get_token(); 
-            let access_token = token.lock().await.expect("Failed to lock the token and failed unwrapping");
-            access_token.deref().clone()
-        }
-    } else {
-        None
-    }
-}
 
 // returns the authorization token which is later used to request access_token.
 fn request_authorization(auth_url: String, user_conf: &UserConfig) -> Option<String> {
@@ -42,7 +18,7 @@ fn request_authorization(auth_url: String, user_conf: &UserConfig) -> Option<Str
         Ok(ls) => {
             match webbrowser::open(auth_url.as_str()) {
                 Ok(_) => println!("Successfully opened in your browser"),
-                Err(e) => println!("Failed to open in your browser {}", e.to_string()),
+                Err(e) => panic!("Failed to open in your browser {}", e.to_string()),
             };
 
             for stream in ls.incoming() {
@@ -55,7 +31,7 @@ fn request_authorization(auth_url: String, user_conf: &UserConfig) -> Option<Str
                                  .map(|s| s.to_owned());
                         }
                     }
-                    Err(e) => println!("Error: {}", e.to_string()),
+                    Err(e) => println!("Error: {}", e),
                 }
             }
         }
@@ -111,38 +87,51 @@ fn respond_with_error(error_message: String, mut stream: TcpStream) {
   stream.flush().unwrap();
 }
 
+// change all of this to pkce, and fix refreshing tomorrow. 
 // checks the cache, regenerates the token if required. 
-// should I check for authorization here as well. 
-pub async fn get_access_token(pkce: &mut AuthCodePkceSpotify, user_conf: &UserConfig) -> Option<Token> {
-    // return None, when the token is expired
-    match pkce.read_token_cache(false).await {
+// checks if the user is authorized or not, if the user is authorized then it 
+pub async fn get_access_token(pkce: &mut AuthCodePkceSpotify, user_conf: &UserConfig) -> ClientResult<()> {
+    match pkce.read_token_cache(true).await {
         Ok(token) => {
+            // since we are allowing expired tokens here, we will check if we need to refresh it
+            // here. 
             match token {
-                Some(t) => Some(t),
-                None => {
-                    // refetch the token here. 
-                    match pkce.refetch_token().await {
-                        Ok(ref_token) => {
-                            match ref_token {
-                                Some(ref_token) => Some(ref_token),
-                                None => {
-                                    // reauthorize the client here as well. 
-                                    authorize_and_process_token(pkce, user_conf).await
-                                }
-                            }
-                        },
-                        Err(e) => {
-                            println!("Failed to get the refresh token {}", e.to_string());
-                            return None;
-                        }
+                Some(t) => {
+                    // Since we are reading from cache hence setting the value to the token is
+                    // correct.
+                    // Regardless the pkce object will not have token here at this point. 
+                    *pkce.token.lock().await.unwrap() = Some(t.clone());
+                    if t.is_expired() {
+                        log::info!("Refreshed token here");
+                        pkce.refresh_token().await?
                     }
+
+                    log::info!("The unexpired token was used");
+
+                    Ok(())
+                },
+                None => {
+                    // reauthorize if for some reason the cache cannot be read;
+                    let auth_url = pkce.get_authorize_url(Some(69))?;
+                    let auth_code = match request_authorization(auth_url, user_conf) {
+                        Some(code) => code,
+                        None => panic!("Failed to get the authorization code"),
+                    };
+
+                    log::info!("Failed to get the cached token hence reauthentication again");
+                    pkce.request_token(auth_code.as_str()).await
                 }
             }
         },
         Err(_) => {
-            // in case there is an error related to reading the token cache, reauthorize the
-            // client. 
-            authorize_and_process_token(pkce, user_conf).await
+            // authorize here if for some reason we are not able to read_cache; 
+            let auth_url = pkce.get_authorize_url(Some(69))?;
+            let auth_code = match request_authorization(auth_url, user_conf) {
+                Some(code) => code,
+                None => panic!("Failed to get the authorization code"),
+            };
+            log::info!("Authentication");
+            pkce.request_token(auth_code.as_str()).await
         }
     }
 }
