@@ -87,9 +87,20 @@ fn respond_with_error(error_message: String, mut stream: TcpStream) {
   stream.flush().unwrap();
 }
 
-// change all of this to pkce, and fix refreshing tomorrow. 
-// checks the cache, regenerates the token if required. 
-// checks if the user is authorized or not, if the user is authorized then it 
+async fn authorize(pkce: &mut AuthCodePkceSpotify, user_conf: &UserConfig) -> ClientResult<()> {
+    let auth_url = pkce.get_authorize_url(Some(69))?;
+    let auth_code = match request_authorization(auth_url, user_conf) {
+        Some(code) => code,
+        None => panic!("Failed to generate the authorization code")
+    };
+
+    log::info!("Authentication the client");
+    pkce.request_token(&auth_code).await
+}
+
+// checks the cache, expired tokens are allowed, regenerates the token if required. 
+// checks if the user is authorized or not, if the user is authorized then it reauthorizes the
+// user. 
 pub async fn get_access_token(pkce: &mut AuthCodePkceSpotify, user_conf: &UserConfig) -> ClientResult<()> {
     match pkce.read_token_cache(true).await {
         Ok(token) => {
@@ -103,35 +114,23 @@ pub async fn get_access_token(pkce: &mut AuthCodePkceSpotify, user_conf: &UserCo
                     *pkce.token.lock().await.unwrap() = Some(t.clone());
                     if t.is_expired() {
                         log::info!("Refreshed token here");
-                        pkce.refresh_token().await?
+                        match pkce.refresh_token().await {
+                            Ok(()) => Ok(()),
+                            Err(_) => authorize(pkce, user_conf).await
+                        }
+                    } else {
+                        Ok(())
                     }
-
-                    log::info!("The unexpired token was used");
-
-                    Ok(())
                 },
                 None => {
                     // reauthorize if for some reason the cache cannot be read;
-                    let auth_url = pkce.get_authorize_url(Some(69))?;
-                    let auth_code = match request_authorization(auth_url, user_conf) {
-                        Some(code) => code,
-                        None => panic!("Failed to get the authorization code"),
-                    };
-
-                    log::info!("Failed to get the cached token hence reauthentication again");
-                    pkce.request_token(auth_code.as_str()).await
+                    authorize(pkce, user_conf).await
                 }
             }
         },
         Err(_) => {
             // authorize here if for some reason we are not able to read_cache; 
-            let auth_url = pkce.get_authorize_url(Some(69))?;
-            let auth_code = match request_authorization(auth_url, user_conf) {
-                Some(code) => code,
-                None => panic!("Failed to get the authorization code"),
-            };
-            log::info!("Authentication");
-            pkce.request_token(auth_code.as_str()).await
+            authorize(pkce, user_conf).await
         }
     }
 }
