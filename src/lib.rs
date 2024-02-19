@@ -1,6 +1,9 @@
 pub mod auth;
+pub mod keybinds;
+pub mod app;
 pub mod constants;
 pub mod user_config;
+pub mod events; 
 
 pub mod utils {
     use std::env::{var, VarError};

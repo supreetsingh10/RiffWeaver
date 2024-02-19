@@ -1,6 +1,8 @@
-use std::{ops::Deref, path::PathBuf};
-use lib::{utils::generate_abs_path, constants::*, auth::get_access_token, user_config::{load_user_config, UserConfig}};
+use std::path::PathBuf;
+use futures::stream::TryStreamExt; 
+use lib::{app, auth::get_access_token, constants::*, events, keybinds::check_event, user_config::{load_user_config, UserConfig}, utils::generate_abs_path};
 use rspotify::{clients::OAuthClient, scopes, AuthCodePkceSpotify, Config, Credentials, OAuth}; 
+use rspotify::model::UserId; 
 
 
 fn oauth_setup(usr_conf: &UserConfig) -> OAuth {
@@ -32,6 +34,7 @@ fn oauth_setup(usr_conf: &UserConfig) -> OAuth {
     oauth
 }
 
+const DEBUG: bool = false; 
 // to implemenent the commandline user arguments, to take inputs. 
 #[tokio::main]
 async fn main() {
@@ -58,4 +61,27 @@ async fn main() {
         println!("Failed to get the access token {}", e);
     }
 
+    // so this is executing the results concurrently. 
+    if DEBUG {
+        let _ = crossterm::terminal::enable_raw_mode();
+        let top_ars = pkce.current_user_top_artists(Some(rspotify::model::TimeRange::ShortTerm));
+        top_ars.try_for_each_concurrent(10, |item| async move {
+            println!("{}", item.name);
+            Ok(())
+        }).await
+        .unwrap(); 
+
+        // pkce.user_playlist_create(user_id, , public, collaborative, description)
+
+        let _ = app::initialize(); 
+
+        loop {
+            let _ = check_event().await;
+        }
+
+    }
+
+    events::get_recently_played(&pkce,Some(10), None).await;
+    events::get_user(&pkce).await; 
+    events::stop_song(&pkce).await;
 }
